@@ -50,14 +50,17 @@ const isSelfClosingTag = (tagName: string) => {
 	return selfClosingElements.includes(tagName.toLowerCase());
 };
 
+export type FileApiChunkCallback = (chunk: string)=> void | Promise<void>;
+
 export type FileApi = {
 	exists(path: string): Promise<boolean>;
 	readFileText(path: string): Promise<string>;
 	readFileDataUri(path: string): Promise<string>;
+	streamFileDataUri(path: string, onChunk: FileApiChunkCallback): Promise<void>;
 };
 
 // packToString should be able to run in React Native -- don't use fs-extra.
-const packToString = async (baseDir: string, inputFileText: string, fs: FileApi) => {
+const packToString = async (baseDir: string, inputFileText: string, fs: FileApi, write: FileApiChunkCallback) => {
 	const readFileDataUriSafe = async (path: string) => {
 		try {
 			return await fs.readFileDataUri(path);
@@ -174,12 +177,14 @@ const packToString = async (baseDir: string, inputFileText: string, fs: FileApi)
 		if (!await fs.exists(filePath)) return null;
 
 		const modAttrs = { ...attrs };
-		modAttrs.href = await readFileDataUriSafe(filePath);
+		delete modAttrs.href;
 		modAttrs.download = basename(href);
-		return `<a ${attributesHtml(modAttrs)}>`;
-	};
 
-	const output: string[] = [];
+		await write('<a href="');
+		await fs.streamFileDataUri(filePath, async (chunk) => { await write(chunk); });
+		await write(`" ${attributesHtml(modAttrs)}>`);
+		return '';
+	};
 
 	interface Tag {
 		name: string;
@@ -196,7 +201,7 @@ const packToString = async (baseDir: string, inputFileText: string, fs: FileApi)
 		onopentag: async (name: string, attrs: HtmlAttrs) => {
 			name = name.toLowerCase();
 
-			let processedResult = '';
+			let processedResult: string | null = null;
 
 			if (name === 'link') {
 				processedResult = await processLinkTag(name, attrs);
@@ -216,13 +221,13 @@ const packToString = async (baseDir: string, inputFileText: string, fs: FileApi)
 
 			tagStack.push({ name });
 
-			if (processedResult) {
-				output.push(processedResult);
+			if (processedResult !== null) {
+				if (processedResult) await write(processedResult);
 			} else {
 				let attrHtml = attributesHtml(attrs);
 				if (attrHtml) attrHtml = ` ${attrHtml}`;
 				const closingSign = isSelfClosingTag(name) ? '/>' : '>';
-				output.push(`<${name}${attrHtml}${closingSign}`);
+				await write(`<${name}${attrHtml}${closingSign}`);
 			}
 		},
 
@@ -231,9 +236,9 @@ const packToString = async (baseDir: string, inputFileText: string, fs: FileApi)
 				// For CSS, we have to put the style as-is inside the tag because if we html-entities encode
 				// it, it's not going to work. But it's ok because JavaScript won't run within the style tag.
 				// Ideally CSS should be loaded from an external file.
-				output.push(decodedText);
+				await write(decodedText);
 			} else {
-				output.push(htmlentities(decodedText));
+				await write(htmlentities(decodedText));
 			}
 		},
 
@@ -243,13 +248,10 @@ const packToString = async (baseDir: string, inputFileText: string, fs: FileApi)
 			if (current.name === name.toLowerCase()) tagStack.pop();
 
 			if (isSelfClosingTag(name)) return;
-			output.push(`</${name}>`);
+			await write(`</${name}>`);
 		},
 
 	});
-
-	return output.join('');
 };
 
 export default packToString;
-
