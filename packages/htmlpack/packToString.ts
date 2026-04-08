@@ -56,7 +56,7 @@ export type FileApi = {
 	exists(path: string): Promise<boolean>;
 	readFileText(path: string): Promise<string>;
 	readFileDataUri(path: string): Promise<string>;
-	streamFileDataUri(path: string, onChunk: FileApiChunkCallback): Promise<void>;
+	streamFileDataUri?(path: string, onChunk: FileApiChunkCallback): Promise<void>;
 };
 
 // packToString should be able to run in React Native -- don't use fs-extra.
@@ -170,6 +170,8 @@ const packToString = async (baseDir: string, inputFileText: string, fs: FileApi,
 	};
 
 	const processAnchorTag = async (_name: string, attrs: HtmlAttrs) => {
+		if (!fs.streamFileDataUri) return null;
+
 		const href = attrValue(attrs, 'href');
 		if (!href) return null;
 
