@@ -136,6 +136,10 @@ writeFile('example.md', 'example');
 
 ## Variables and functions
 
+### Prefer positive names for booleans
+
+When possible use positive names such as `isShown` instead of `isHidden` and `isEnabled` instead of `isDisabled`. This avoids double negatives in conditions such as `!isHidden`.
+
 ### Use `camelCase` for `const`ants in new code
 
 **BAD:**
